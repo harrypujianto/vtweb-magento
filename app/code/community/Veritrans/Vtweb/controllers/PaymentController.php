@@ -31,7 +31,9 @@ class Veritrans_Vtweb_PaymentController
     $orderIncrementId = $this->_getCheckout()->getLastRealOrderId();
     $order = Mage::getModel('sales/order')
         ->loadByIncrementId($orderIncrementId);
+    error_log(print_r($order,TRUE));    
     $sessionId = Mage::getSingleton('core/session');
+
 
     /* send an order email when redirecting to payment page although payment
        has not been completed. */
@@ -65,6 +67,9 @@ class Veritrans_Vtweb_PaymentController
     $transaction_details['order_id'] = $orderIncrementId;
 
     $order_billing_address = $order->getBillingAddress();
+    
+    error_log($order->collection ['1']->first_name);
+
     $billing_address = array();
     $billing_address['first_name']   = $order_billing_address->getFirstname();
     $billing_address['last_name']    = $order_billing_address->getLastname();
@@ -105,11 +110,13 @@ class Veritrans_Vtweb_PaymentController
 
 
     foreach ($items as $each) {
+      
+      error_log(substr($each->getName(), 0,50));
       $item = array(
           'id'       => $each->getProductId(),
           'price'    => $each->getPrice(),
           'quantity' => $each->getQtyToInvoice(),
-          'name'     => $each->getName()
+          'name'     => substr($each->getName(), 0,50)
         );
       
       if ($item['quantity'] == 0) continue;
@@ -327,7 +334,7 @@ class Veritrans_Vtweb_PaymentController
 
     try {
       $redirUrl = Veritrans_VtWeb::getRedirectionUrl($payloads);
-      //Mage::log('debug:'.print_r($payloads,true),null,'vtweb.log',true);
+      Mage::log('debug:'.print_r($payloads,true),null,'vtweb.log',true);
       if ($isWarning) {
         $this->_getCheckout()->setMsg($redirUrl);        
         $this->_redirectUrl(Mage::getBaseUrl(Mage_Core_Model_Store::URL_TYPE_LINK) . 'vtweb/paymentwarning/warning/message/1');
@@ -372,6 +379,27 @@ class Veritrans_Vtweb_PaymentController
     }
   }
 
+  // Response early with 200 OK status for Midtrans notification & handle HTTP GET
+  public function earlyResponse(){
+    if ( $_SERVER['REQUEST_METHOD'] == 'GET' ){
+      die('This endpoint should not be opened using browser (HTTP GET). This endpoint is for Midtrans notification URL (HTTP POST)');
+      exit();
+    }
+
+    ob_start();
+
+    $input_source = "php://input";
+    $raw_notification = json_decode(file_get_contents($input_source), true);
+    echo "Notification Received: \n";
+    print_r($raw_notification);
+    
+    header('Connection: close');
+    header('Content-Length: '.ob_get_length());
+    ob_end_flush();
+    ob_flush();
+    flush();
+  }
+
   // Veritrans will send notification of the payment status, this is only way we
   // make sure that the payment is successed, if success send the item(s) to
   // customer :p
@@ -380,6 +408,9 @@ class Veritrans_Vtweb_PaymentController
     Veritrans_Config::$isProduction =
         Mage::getStoreConfig('payment/vtweb/environment') == 'production' ? true : false;
     Veritrans_Config::$serverKey = Mage::getStoreConfig('payment/vtweb/server_key_v2');
+    
+    $this->earlyResponse();
+
     $notif = new Veritrans_Notification();
     Mage::log('get status result'.print_r($notif,true),null,'vtweb.log',true);
 
